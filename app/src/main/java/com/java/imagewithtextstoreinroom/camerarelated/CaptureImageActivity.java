@@ -1,0 +1,335 @@
+package com.java.imagewithtextstoreinroom.camerarelated;
+
+import android.Manifest;
+import android.app.Activity;
+import android.content.Intent;
+import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.provider.MediaStore;
+import android.util.Log;
+import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
+import com.java.imagewithtextstoreinroom.utils.FileUtils;
+import com.theartofdev.edmodo.cropper.CropImage;
+import com.theartofdev.edmodo.cropper.CropImageView;
+import java.io.File;
+import java.io.IOException;
+import static com.java.imagewithtextstoreinroom.camerarelated.CameraConstants.PERMISSION_REQUEST_FOR_CAMERA;
+import static com.java.imagewithtextstoreinroom.camerarelated.CameraConstants.PERMISSION_REQUEST_FOR_EXTERNAL_STORAGE;
+import static com.java.imagewithtextstoreinroom.camerarelated.CameraConstants.REQUEST_CAMERA_INTENT;
+
+public class CaptureImageActivity extends Activity {
+    private static final String TAG = "CaptureImageActivity";
+
+    //<editor-fold desc="properties">
+    private Uri mCapturedImageFileURI;
+    private String mCurrentPhotoPath;
+    private String id = "";
+    //</editor-fold>
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        //lock the orientation
+        lockScreenOrientationToCurrent();
+        super.onCreate(savedInstanceState);
+        //check if activity recreated or first time created
+        if (savedInstanceState == null) {
+            //first time
+            id = getIntent().getStringExtra("id");
+            requestPermissionForExternalStorage();
+        } else {
+            //recreated
+            id = savedInstanceState.getString("id");
+            mCapturedImageFileURI = Uri.parse(savedInstanceState.getString("mCapturedImageFileURI"));
+            mCurrentPhotoPath = savedInstanceState.getString("mCurrentPhotoPath");
+        }
+    }
+
+    //<editor-fold desc="request permission for External Storage & Camera">
+    /**
+     * Request for external storage permission
+     */
+    private boolean requestPermissionForExternalStorage() {
+        if (ContextCompat.checkSelfPermission(getApplicationContext(),
+                Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+            // explanation?
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
+                //Toast.makeText(getApplicationContext(), "External storage permission is mandatory",Toast.LENGTH_LONG).show();
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                        PERMISSION_REQUEST_FOR_EXTERNAL_STORAGE);
+            } else {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                        PERMISSION_REQUEST_FOR_EXTERNAL_STORAGE);
+            }
+            return true;
+        } else {
+            requestPermissionForCamera();
+            return false;
+        }
+    }
+
+    /**
+     * Request for camera permission
+     */
+    public boolean requestPermissionForCamera() {
+        if (ContextCompat.checkSelfPermission(getApplicationContext(),
+                Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED) {
+            // explanation?
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
+                    Manifest.permission.CAMERA)) {
+                //Toast.makeText(getApplicationContext(), "External storage permission is mandatory",Toast.LENGTH_LONG).show();
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.CAMERA},
+                        PERMISSION_REQUEST_FOR_CAMERA);
+            } else {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.CAMERA},
+                        PERMISSION_REQUEST_FOR_CAMERA);
+            }
+            return true;
+        } else {
+            cameraIntent();
+            return false;
+        }
+    }
+
+    /**
+     * Permission Request result callback
+     */
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String permissions[], @NonNull int[] grantResults) {
+        switch (requestCode) {
+            case PERMISSION_REQUEST_FOR_EXTERNAL_STORAGE: {
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // permission was granted
+//                    Toast.makeText(getApplicationContext(), "SMS Permission granted", Toast.LENGTH_LONG).show();
+                    requestPermissionForCamera();
+                } else {
+//                    Toast.makeText(getApplicationContext(), "",Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "Camera permission needed", Toast.LENGTH_SHORT).show();
+                    clearNFinishActivity();
+                }
+                break;
+            }
+
+            case PERMISSION_REQUEST_FOR_CAMERA: {
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // permission was granted
+//                    Toast.makeText(getApplicationContext(), "SMS Permission granted", Toast.LENGTH_LONG).show();
+                        cameraIntent();
+                } else {
+//                    Toast.makeText(getApplicationContext(), "",Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "Camera permission needed", Toast.LENGTH_SHORT).show();
+                    clearNFinishActivity();
+                }
+                break;
+            }
+        }
+    }
+    //</editor-fold>
+
+    /**
+     * Start the implicit intent
+     */
+    private void cameraIntent() {
+        File file = FileUtils.getFile();
+        //getting file path of the mCurrentPhotoPath
+        mCurrentPhotoPath = file.getAbsolutePath();
+        //getting uri of the mCapturedImageFileURI
+        if (Build.VERSION.SDK_INT >= 24) {
+            //for nougat
+            mCapturedImageFileURI = FileProvider.getUriForFile(this, getPackageName() + ".provider", file);
+        } else {
+            //before nougat
+            mCapturedImageFileURI = Uri.fromFile(file);
+        }
+        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        intent.putExtra(MediaStore.EXTRA_OUTPUT, mCapturedImageFileURI);
+        //check if there is any camera app available and then start intent
+        if (intent.resolveActivity(getPackageManager()) != null) {
+            startActivityForResult(intent, REQUEST_CAMERA_INTENT);
+        } else {
+            Toast.makeText(this, "There is no Camera Application found", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, final Intent data) {
+        Log.d(TAG, "onActivityResult: called");
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode == Activity.RESULT_OK) {
+            Log.d(TAG, "onActivityResult: RESULT_OK");
+            if (requestCode == REQUEST_CAMERA_INTENT) {
+                //camera activity was started by REQUEST_CAMERA_INTENT
+                Log.d(TAG, "onActivityResult: REQUEST_CAMERA_INTENT");
+                new Handler().postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        onCaptureImageResult();
+                    }
+                },200);
+            } else if (requestCode == CropImage.CROP_IMAGE_ACTIVITY_REQUEST_CODE) {
+                //camera activity was started by CROP_IMAGE_ACTIVITY_REQUEST_CODE
+                CropImage.ActivityResult result = CropImage.getActivityResult(data);
+                if (resultCode == RESULT_OK) {
+                    getImageFromCropActivity(result);
+                } else if (resultCode == CropImage.CROP_IMAGE_ACTIVITY_RESULT_ERROR_CODE) {
+                    Exception error = result.getError();
+                    clearNFinishActivity();
+                }
+            }
+        } else if (resultCode == RESULT_CANCELED) {
+            //User canceled the camera capturing activity
+            Toast.makeText(this, "Image capturing canceled", Toast.LENGTH_SHORT).show();
+            clearNFinishActivity();
+        }
+    }
+
+    private void onCaptureImageResult() {
+        try {
+            //declare the Bitmap variable & get the CameraProvider instance without context
+            // (We don't need to reinitialize the context)
+            Log.d(TAG, "onCaptureImageResult: called");
+            Bitmap bitmapImage = null;
+            CameraProvider cameraProvider = CameraProvider.getInstance();
+            if (mCapturedImageFileURI != null) {
+                //everything is fine, retrieve the bitmap image from the URI
+                Log.d(TAG, "onCaptureImageResult: mCapturedImageFileURI not null");
+                bitmapImage = FileUtils.retrieveBitmapFromFileURI(
+                        this, mCapturedImageFileURI, 200, 200
+                );
+            }
+            if (!cameraProvider.isShouldCropImage()) {
+                //no need to crop image send data through the listener & finish activity
+                Log.d(TAG, "onCaptureImageResult: bitmapImage: " + bitmapImage + ", mCurrentPhotoPath: " + mCurrentPhotoPath);
+                cameraProvider.getImagePickerListener().onImagePicked(bitmapImage, mCurrentPhotoPath, id);
+                clearNFinishActivity();
+            } else {
+                //open crop image activity
+                Log.d(TAG, "onCaptureImageResult: showImageCropperActivity");
+                showImageCropperActivity(cameraProvider.isShouldCropShapeOval());
+            }
+        } catch (Exception e) {
+            //something went wrong, finish this activity so that the actual visible activity can again gain control
+            Log.d(TAG, "onCaptureImageResult: exception");
+            e.printStackTrace();
+            clearNFinishActivity();
+        }
+    }
+
+    private void showImageCropperActivity(boolean isOval) {
+        CropImage.activity(mCapturedImageFileURI)
+                .setCropShape(
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                                ? CropImageView.CropShape.RECTANGLE
+                                : (isOval
+                                    ? CropImageView.CropShape.OVAL
+                                    : CropImageView.CropShape.RECTANGLE
+                                )
+                )
+                .setActivityMenuIconColor(getResources().getColor(android.R.color.white))
+//                .setBorderCornerColor(getResources().getColor(R.color.colorAccent))
+                .setGuidelines(CropImageView.Guidelines.ON)
+                .start(this);
+    }
+
+    private void getImageFromCropActivity(CropImage.ActivityResult result) {
+        if (result != null) {
+            try {
+                Uri selectedImage = result.getUri();
+//                Bitmap bitmapImage = MediaStore.Images.Media.getBitmap(getContentResolver(), selectedImage);
+                Bitmap bitmapImage = FileUtils.retrieveBitmapFromFileURI(
+                        this, selectedImage, 200, 200
+                );
+                String imagePath = FileUtils.storeImage(this, bitmapImage);
+                CameraProvider.getInstance().getImagePickerListener().onImagePicked(bitmapImage, imagePath, id);
+                this.finish();
+            } catch (IOException e) {
+                e.printStackTrace();
+                clearNFinishActivity();
+            }
+        } else {
+            clearNFinishActivity();
+        }
+
+    }
+
+    //<editor-fold desc="finish this activity">
+    private void clearNFinishActivity() {
+//        CameraProvider.getInstance().onDestroy();
+        unlockScreenOrientationToCurrent();
+        finish();
+    }
+    //</editor-fold>
+
+    //<editor-fold desc="onRestore & onSave InstanceState">
+    @Override
+    protected void onRestoreInstanceState(Bundle savedInstanceState) {
+        //null check not required, but for safety
+        if (savedInstanceState != null) {
+            //activity restored, restore date
+            id = savedInstanceState.getString("id");
+            mCapturedImageFileURI = Uri.parse(savedInstanceState.getString("mCapturedImageFileURI"));
+            mCurrentPhotoPath = savedInstanceState.getString("mCurrentPhotoPath");
+        }
+        Log.d(TAG, "onRestoreInstanceState: called - mCapturedImageFileURI: "
+                + mCapturedImageFileURI + ", mCurrentPhotoPath: " + mCurrentPhotoPath + ", id: " + id);
+        super.onRestoreInstanceState(savedInstanceState);
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        //activity is going to destroy save data
+        Log.d(TAG, "onSaveInstanceState: called & saved - mCapturedImageFileURI: "
+                + mCapturedImageFileURI + ", mCurrentPhotoPath: " + mCurrentPhotoPath + ", id: " + id);
+        if (outState != null) {
+            if (mCapturedImageFileURI != null) {
+                outState.putString("mCapturedImageFileURI", mCapturedImageFileURI.toString());
+            }
+            if (mCurrentPhotoPath != null) {
+                outState.putString("mCurrentPhotoPath", mCurrentPhotoPath);
+            }
+            if (id != null) {
+                outState.putString("id", id);
+            }
+        }
+        super.onSaveInstanceState(outState);
+    }
+    //</editor-fold>
+
+    //<editor-fold desc="lock/ unlock orientation">
+    /**
+     * method to lock orientation to current
+     */
+    private void lockScreenOrientationToCurrent() {
+        if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        } else setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+    }
+
+    /**
+     * go back to previous orientation settings as per the application app module
+     */
+    private void unlockScreenOrientationToCurrent() {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+    }
+    //</editor-fold>
+
+}
